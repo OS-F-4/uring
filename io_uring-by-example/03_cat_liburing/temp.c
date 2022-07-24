@@ -95,6 +95,30 @@ int get_completion_and_print(struct io_uring *ring) {
     return 0;
 }
 
+int while_completion_and_print(struct io_uring *ring) {
+    struct io_uring_cqe *cqe;
+    do{
+    int ret = io_uring_peek_cqe(ring, &cqe);
+    if (ret < 0) {
+        perror("io_uring_wait_cqe");
+        return 1;
+    }
+    if (cqe->res < 0) {
+        fprintf(stderr, "Async readv failed.\n");
+        return 1;
+    }
+    struct file_info *fi = io_uring_cqe_get_data(cqe);
+    int blocks = (int) fi->file_sz / BLOCK_SZ;
+    if (fi->file_sz % BLOCK_SZ) blocks++;
+    for (int i = 0; i < blocks; i ++)
+        output_to_console(fi->iovecs[i].iov_base, fi->iovecs[i].iov_len);
+
+    io_uring_cqe_seen(ring, cqe);
+    completed++;
+    }while(cqe);
+    return 0;
+}
+
 /*
  * Submit the readv request via liburing
  * */
@@ -151,14 +175,32 @@ int submit_read_request(char *file_path, struct io_uring *ring) {
 
     return 0;
 }
+pthread_mutex_t awake_lock;
+bool awake=false;
+pthread_t get_completion_thread;
 
+void thread(void){
+    pthread_detach(pthread_self());
+    while_completion_and_print(&ring);
+
+    pthread_mutex_lock(&awake_lock);
+    awake = false;
+    pthread_mutex_unlock(&awake_lock);
+    pthread_exit(NULL);
+}
 
 void __attribute__ ((interrupt)) uintr_handler(struct __uintr_frame *ui_frame,
 					       unsigned long long vector)
 {
     // get_completion_and_print(&ring);
-    printf("complete!\n");
-	completed++;
+    pthread_mutex_lock(&awake_lock);
+    if(awake){
+        printf("awake return\n");
+    }else{
+        awake = true;
+        pthread_create(&get_completion_thread, 0, (void *)thread, 0);
+    }
+    pthread_mutex_unlock(&awake_lock); 
 }
 
 
