@@ -13,6 +13,7 @@
 #define DEFAULT_SERVER_PORT     8000
 #define QUEUE_DEPTH             256
 #define READ_SZ                 8192
+#define BLOCK_SZ                4096
 
 #define EVENT_TYPE_ACCEPT       0
 #define EVENT_TYPE_READ         1
@@ -364,7 +365,7 @@ void handle_http_method(char *method_buffer, int client_socket) {
 int get_line(const char *src, char *dest, int dest_sz) {
     for (int i = 0; i < dest_sz; i++) {
         dest[i] = src[i];
-        if (src[i] == '\r' && src[i+1] == '\n') {
+        if (src[i] == '\n') {
             dest[i] = '\0';
             return 0;
         }
@@ -440,7 +441,12 @@ int main() {
     int server_socket = setup_listening_socket(DEFAULT_SERVER_PORT);
 
     signal(SIGINT, sigint_handler);
-    io_uring_queue_init(QUEUE_DEPTH, &ring, 0);
+    struct io_uring_params par;
+    memset(&par, 0, sizeof(struct io_uring_params));
+    // par.uintr_fd = uintr_fd;
+    par.flags |= IORING_SETUP_SQPOLL;
+    io_uring_queue_init_params(QUEUE_DEPTH, &ring, &par);
+    // io_uring_queue_init(QUEUE_DEPTH, &ring, 0);
     server_loop(server_socket);
 
     return 0;
