@@ -8,6 +8,20 @@
 #include <liburing.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <pthread.h>
+#include <x86gprintrin.h>
+#define __NR_uintr_register_handler	449
+#define __NR_uintr_unregister_handler	450
+#define __NR_uintr_create_fd		451
+#define __NR_uintr_register_sender	452
+#define __NR_uintr_unregister_sender	453
+
+/* For simiplicity, until glibc support is added */
+#define uintr_register_handler(handler, flags)	syscall(__NR_uintr_register_handler, handler, flags)
+#define uintr_unregister_handler(flags)		syscall(__NR_uintr_unregister_handler, flags)
+#define uintr_create_fd(vector, flags)		syscall(__NR_uintr_create_fd, vector, flags)
+#define uintr_register_sender(fd, flags)	syscall(__NR_uintr_register_sender, fd, flags)
+#define uintr_unregister_sender(fd, flags)	syscall(__NR_uintr_unregister_sender, fd, flags)
 
 #define SERVER_STRING           "Server: zerohttpd/0.1\r\n"
 #define DEFAULT_SERVER_PORT     8000
@@ -27,6 +41,94 @@ struct request {
 };
 
 struct io_uring ring;
+struct sockaddr_in client_addr;
+socklen_t client_addr_len = sizeof(client_addr);
+int add_read_request(int client_socket);
+int handle_client_request(struct request *req);
+
+int req_completed = 0;
+int need = 1;
+int g_server_socket;
+pthread_mutex_t awake_lock;
+bool awake=false;
+pthread_t get_completion_thread;
+void fatal_error(const char *syscall) {
+    perror(syscall);
+    exit(1);
+}
+
+int add_accept_request(int server_socket, struct sockaddr_in *client_addr,
+                       socklen_t *client_addr_len);
+
+void server_loop() {
+    struct io_uring_cqe *cqe = NULL;
+    while(1){
+        int ret = io_uring_peek_cqe(&ring, &cqe);
+        if(!cqe)break;
+        req_completed ++;
+        printf("getting a requset\n");
+        if (ret < 0)
+            fatal_error("io_uring_peek_cqe");
+        struct request *req = (struct request *) cqe->user_data;
+        if (cqe->res < 0) {
+            fprintf(stderr, "Async request failed: %s for event: %d\n",
+                    strerror(-cqe->res), req->event_type);
+            exit(1);
+        }
+        switch (req->event_type) {
+            case EVENT_TYPE_ACCEPT:
+                add_accept_request(g_server_socket, &client_addr, &client_addr_len);
+                add_read_request(cqe->res);
+                free(req);
+                break;
+            case EVENT_TYPE_READ:
+                if (!cqe->res) {
+                    fprintf(stderr, "Empty request!\n");
+                    break;
+                }
+                handle_client_request(req);
+                free(req->iov[0].iov_base);
+                free(req);
+                break;
+            case EVENT_TYPE_WRITE:
+                for (int i = 0; i < req->iovec_count; i++) {
+                    free(req->iov[i].iov_base);
+                }
+                close(req->client_socket);
+                free(req);
+                break;
+        }
+        /* Mark this request as processed */
+        io_uring_cqe_seen(&ring, cqe);
+    }
+}
+
+void thread(void){
+    pthread_detach(pthread_self());
+    server_loop();
+    printf("- - - - leave\n");
+    pthread_mutex_lock(&awake_lock);
+    awake = false;
+    pthread_mutex_unlock(&awake_lock);
+  
+    pthread_exit(NULL);
+}
+
+void __attribute__ ((interrupt)) uintr_handler(struct __uintr_frame *ui_frame,
+					       unsigned long long vector)
+{
+    // get_completion_and_print(&ring);
+    pthread_mutex_lock(&awake_lock);
+    if(awake){
+        printf("awake return\n");
+    }else{
+        awake = true;
+        printf("~ ~ ~ ~init\n");
+        pthread_create(&get_completion_thread, 0, (void *)thread, 0);
+    }
+    pthread_mutex_unlock(&awake_lock); 
+}
+
 
 const char *unimplemented_content = \
         "HTTP/1.0 400 Bad Request\r\n"
@@ -68,10 +170,7 @@ void strtolower(char *str) {
  One function that prints the system call and the error details
  and then exits with error code 1. Non-zero meaning things didn't go well.
  */
-void fatal_error(const char *syscall) {
-    perror(syscall);
-    exit(1);
-}
+
 
 /*
  * Helper function for cleaner looking code.
@@ -127,6 +226,7 @@ int setup_listening_socket(int port) {
 
 int add_accept_request(int server_socket, struct sockaddr_in *client_addr,
                        socklen_t *client_addr_len) {
+    printf("adding  accept\n");
     struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
     io_uring_prep_accept(sqe, server_socket, (struct sockaddr *) client_addr,
                          client_addr_len, 0);
@@ -384,52 +484,9 @@ int handle_client_request(struct request *req) {
     return 0;
 }
 
-void server_loop(int server_socket) {
-    struct io_uring_cqe *cqe;
-    struct sockaddr_in client_addr;
-    socklen_t client_addr_len = sizeof(client_addr);
 
-    add_accept_request(server_socket, &client_addr, &client_addr_len);
 
-    while (1) {
-        int ret = io_uring_wait_cqe(&ring, &cqe);
-        printf("getting a requset\n");
-        if (ret < 0)
-            fatal_error("io_uring_wait_cqe");
-        struct request *req = (struct request *) cqe->user_data;
-        if (cqe->res < 0) {
-            fprintf(stderr, "Async request failed: %s for event: %d\n",
-                    strerror(-cqe->res), req->event_type);
-            exit(1);
-        }
 
-        switch (req->event_type) {
-            case EVENT_TYPE_ACCEPT:
-                add_accept_request(server_socket, &client_addr, &client_addr_len);
-                add_read_request(cqe->res);
-                free(req);
-                break;
-            case EVENT_TYPE_READ:
-                if (!cqe->res) {
-                    fprintf(stderr, "Empty request!\n");
-                    break;
-                }
-                handle_client_request(req);
-                free(req->iov[0].iov_base);
-                free(req);
-                break;
-            case EVENT_TYPE_WRITE:
-                for (int i = 0; i < req->iovec_count; i++) {
-                    free(req->iov[i].iov_base);
-                }
-                close(req->client_socket);
-                free(req);
-                break;
-        }
-        /* Mark this request as processed */
-        io_uring_cqe_seen(&ring, cqe);
-    }
-}
 
 void sigint_handler(int signo) {
     printf("^C pressed. Shutting down.\n");
@@ -438,16 +495,39 @@ void sigint_handler(int signo) {
 }
 
 int main() {
-    int server_socket = setup_listening_socket(DEFAULT_SERVER_PORT);
+    g_server_socket = setup_listening_socket(DEFAULT_SERVER_PORT);
 
     signal(SIGINT, sigint_handler);
+    if (uintr_register_handler(uintr_handler, 0)) {
+		printf("Interrupt handler register error\n");
+		exit(EXIT_FAILURE);
+	}
+
+    int ret = uintr_create_fd(0, 0);
+    if(! ret){
+        printf("error when creat fd\n");
+        exit(2);
+    }
+    _stui();
+
     struct io_uring_params par;
     memset(&par, 0, sizeof(struct io_uring_params));
-    // par.uintr_fd = uintr_fd;
+    par.uintr_fd = ret;
     par.flags |= IORING_SETUP_SQPOLL;
     io_uring_queue_init_params(QUEUE_DEPTH, &ring, &par);
     // io_uring_queue_init(QUEUE_DEPTH, &ring, 0);
-    server_loop(server_socket);
+    add_accept_request(g_server_socket, &client_addr, &client_addr_len);
+    // server_loop(server_socket);
+    unsigned long  count = 0;
+    while(req_completed < need){
+        count ++;
+        if(count % 1000 == 0)printf("do compute\n");
+        sleep(0.5);
+    }
 
+    sleep(10);
+    // io_uring_queue_exit(&ring);
+    _clui();
+    printf("exit\n");
     return 0;
 }
