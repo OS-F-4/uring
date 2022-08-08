@@ -7,7 +7,3 @@ all:
 
 move:
 	cp ./couring $(ROOTFS)
-	# pack the rootfs
-	cd $(ROOTFS) && find . -print0 | cpio --null -ov --format=newc | gzip -9 > ../ubuntu-x86_64.cpio.gz
-	cd -
-	run

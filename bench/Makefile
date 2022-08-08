@@ -2,8 +2,7 @@ liburing_dir = /home/xcd/qemu_uintr/uring/liburing
 CFLAGS += -static -O3
 LDFLAGS += -I $(liburing_dir)/src/include  -L $(liburing_dir)/src/ -luring -D_GNU_SOURCE 
 UINTR_FLAGS = -muintr -mgeneral-regs-only -minline-all-stringops
-
-
+ROOTFS=~/qemu_uintr/rootfs/
 
 all:
 	make normal
@@ -26,7 +25,7 @@ uintr: uintr.c utils.h
 
 
 move:
-	cp *.txt ~/qemu_uintr/rootfs/
-	cp normal ~/qemu_uintr/rootfs/
-	cp uring  ~/qemu_uintr/rootfs/
-	cp uintr ~/qemu_uintr/rootfs/
+	cp *.txt $(ROOTFS)
+	cp normal  $(ROOTFS)
+	cp uring   $(ROOTFS)
+	cp uintr  $(ROOTFS)
