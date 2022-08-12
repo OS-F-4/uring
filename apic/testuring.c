@@ -24,25 +24,27 @@ int uintr_fd;
 void __attribute__ ((interrupt)) uintr_handler(struct __uintr_frame *ui_frame,
 					       unsigned long long vector)
 {   
-    int ret = io_uring_peek_cqe(&ring, &cqe);
-    if(ret < 0) printf("in handler but no cqe\n");
-    if(!cqe) return;
-    complete(&ring, cqe);
-    endio(io_list[io_index], io_index);
-    io_index ++;
-    if(io_index< io_num){
-        // printf("submit %d\n", io_index);
-        startio();
-        submit_read(&ring, io_list[io_index]);
-    }
+    printf("in handler\n");
+    // int ret = io_uring_peek_cqe(&ring, &cqe);
+    // if(ret < 0) printf("in handler but no cqe\n");
+    // if(!cqe) return;
+    // complete(&ring, cqe);
+    // endio(io_list[io_index], io_index);
+    // io_index ++;
+    // if(io_index< io_num){
+    //     // printf("submit %d\n", io_index);
+    //     startio();
+    //     submit_read(&ring, io_list[io_index]);
+    // }
 }
 
 
 
 
-void setup_uintr(){
-    if (uintr_register_handler(uintr_handler, 0)) {
-		printf("Interrupt handler register error\n");
+void setup_uintr(struct io_uring * ring){
+    int ret;
+    if (ret = uintr_register_handler(uintr_handler, 0)) {
+		printf("Interrupt handler register error %d\n", ret);
 		exit(EXIT_FAILURE);
 	}
 
@@ -51,6 +53,7 @@ void setup_uintr(){
         printf("error when creat fd\n");
         exit(2);
     }
+    io_uring_register_uintr(ring, &uintr_fd);
     _stui();
 }
 
@@ -60,15 +63,13 @@ int main(int argc, char ** argv){
     load_comp_task();
     io_index = comp_index = 0;
     struct io_uring_params par;
-    
-
-    setup_uintr();
     memset(&par, 0, sizeof(struct io_uring_params));
-    par.uintr_fd = uintr_fd;
-    par.flags |= IORING_SETUP_SQPOLL;
+    // par.uintr_fd = uintr_fd;
+    // par.flags |= IORING_SETUP_SQPOLL;
     io_uring_queue_init_params(QUEUE_DEPTH, &ring, &par);
-    total_start();
+    setup_uintr(&ring);
 
+    total_start();
 
     startio();
     submit_read(&ring, io_list[io_index]);
@@ -82,7 +83,7 @@ int main(int argc, char ** argv){
     // while (io_index < io_num){
     //     compute(10);
     // }
-    compute(100); 
+    compute(1000); 
     _clui();
     total_end();
     out_put();

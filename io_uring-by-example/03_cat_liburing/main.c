@@ -23,7 +23,7 @@
 #define uintr_unregister_sender(fd, flags)	syscall(__NR_uintr_unregister_sender, fd, flags)
 
 #define QUEUE_DEPTH 20
-#define BLOCK_SZ    81920
+#define BLOCK_SZ    4096
 struct io_uring ring;
 int completed = 0;
 

@@ -424,6 +424,8 @@ enum {
 	/* register a range of fixed file slots for automatic slot allocation */
 	IORING_REGISTER_FILE_ALLOC_RANGE	= 25,
 
+	IORING_REGISTER_UINTR			= 31,
+	IORING_UNREGISTER_UINTR			= 32,
 	/* this goes last */
 	IORING_REGISTER_LAST
 };
