@@ -1,4 +1,4 @@
-liburing_dir = /home/xcd/qemu_uintr/uring/liburing
+liburing_dir = ~/xcd/uring/liburing
 CFLAGS += -static -O3
 LDFLAGS += -I $(liburing_dir)/src/include  -L $(liburing_dir)/src/ -luring -D_GNU_SOURCE 
 UINTR_FLAGS = -muintr -mgeneral-regs-only -minline-all-stringops
@@ -22,6 +22,10 @@ gen: utils.h
 
 uintr: uintr.c utils.h
 	gcc $(CFLAGS) $(UINTR_FLAGS) uintr.c -o uintr $(LDFLAGS)
+
+uintr18: uintr.c utils.h
+	gcc $(CFLAGS) $(UINTR_FLAGS) uintr.c -o uintr $(LDFLAGS) -Dkernel518
+
 
 
 move:

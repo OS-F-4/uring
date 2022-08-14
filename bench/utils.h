@@ -1,3 +1,4 @@
+#include <string.h>
 #include <stdio.h>
 #include <liburing.h>
 #include <sys/time.h>
@@ -13,7 +14,8 @@
 #define LARGE 40*1024*1024
 #define MAX_IO 1000
 #define QUEUE_DEPTH 20
-
+#define max(x,y)  (x) > (y) ? (x) : (y)
+#define min(x,y)  (x)< (y) ? (x) : (y)
 int io_num = 100;
 int compute_num = 1000;
 
@@ -76,9 +78,23 @@ void end_clock(char * s){
 
 
 void out_put(){
+    long max_delay[3] = {0,0,0};
+    long min_delay[3];
+    long avg_delay[3] = {0,0,0};
+    printf("io_num: %d , compute num : %d \n", io_num, compute_num);
+    memset(&min_delay, 0x3f, 3 * sizeof(long));
     for(int i=0; i < io_num; i++){
-        printf("%d io using %ld us\n", io_list[i], io_delay[i]);
+	int idx = io_list[i];
+	max_delay[idx] = max(max_delay[idx], io_delay[i]);
+	min_delay[idx] = min(min_delay[idx], io_delay[i]);
+	avg_delay[idx] += io_delay[i];
     }
+    for(int i = 0; i < 3; i++){
+	printf("type: %d\n",i);
+	printf("max: %ld, min: %ld, sum: %ld\n",
+		max_delay[i], min_delay[i], avg_delay[i]);
+    }
+		
     printf("total Using time : %ld ms\n",
     (totalend.tv_sec-totalstart.tv_sec)*1000000+
     (totalend.tv_usec-totalstart.tv_usec)); 
