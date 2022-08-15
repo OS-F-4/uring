@@ -61,8 +61,9 @@ void setup_uintr(struct io_uring * ring){
         printf("error when creat fd\n");
         exit(2);
     }
-
+    #ifdef kernel518
     io_uring_register_uintr(ring, &uintr_fd);
+    #endif
     _stui();
 }
 
@@ -75,7 +76,11 @@ int main(int argc, char ** argv){
     
 
     memset(&par, 0, sizeof(struct io_uring_params));
+    
+    #ifndef kernel518
     par.uintr_fd = uintr_fd;
+    #endif
+
     par.flags |= IORING_SETUP_SQPOLL;
     io_uring_queue_init_params(QUEUE_DEPTH, &ring, &par);
     setup_uintr(&ring); 

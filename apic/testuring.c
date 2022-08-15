@@ -34,17 +34,6 @@ void __attribute__ ((interrupt)) uintr_handler(struct __uintr_frame *ui_frame,
 					       unsigned long long vector)
 {   
     printf("in handler\n");
-    // int ret = io_uring_peek_cqe(&ring, &cqe);
-    // if(ret < 0) printf("in handler but no cqe\n");
-    // if(!cqe) return;
-    // complete(&ring, cqe);
-    // endio(io_list[io_index], io_index);
-    // io_index ++;
-    // if(io_index< io_num){
-    //     // printf("submit %d\n", io_index);
-    //     startio();
-    //     submit_read(&ring, io_list[io_index]);
-    // }
 }
 
 
@@ -62,7 +51,9 @@ void setup_uintr(struct io_uring * ring){
         printf("error when creat fd\n");
         exit(2);
     }
+    #ifdef kernel518
     io_uring_register_uintr(ring, &uintr_fd);
+    #endif
     _stui();
 }
 
@@ -73,8 +64,12 @@ int main(int argc, char ** argv){
     io_index = comp_index = 0;
     struct io_uring_params par;
     memset(&par, 0, sizeof(struct io_uring_params));
-    // par.uintr_fd = uintr_fd;
-    // par.flags |= IORING_SETUP_SQPOLL;
+    
+    #ifndef kernel518
+    par.uintr_fd = uintr_fd;
+    #endif
+
+    par.flags |= IORING_SETUP_SQPOLL;
     io_uring_queue_init_params(QUEUE_DEPTH, &ring, &par);
     setup_uintr(&ring);
 
@@ -83,15 +78,7 @@ int main(int argc, char ** argv){
     startio();
     submit_read(&ring, 1);
 
-    // while(comp_index < compute_num){
-    //     compute_res[comp_index] = compute(comp_list[comp_index]);
-    //     comp_index ++;
-    // }
 
-
-    // while (io_index < io_num){
-    //     compute(10);
-    // }
     compute(1000); 
     _clui();
     total_end();

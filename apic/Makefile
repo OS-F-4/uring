@@ -1,4 +1,4 @@
-liburing_dir = ~/xcd/uring/liburing
+liburing_dir = ~/qemu_uintr/uring/liburing
 CFLAGS += -static -O3
 LDFLAGS += -I $(liburing_dir)/src/include  -L $(liburing_dir)/src/ -luring -D_GNU_SOURCE 
 UINTR_FLAGS = -muintr -mgeneral-regs-only -minline-all-stringops

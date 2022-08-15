@@ -11,11 +11,19 @@
 #include <x86gprintrin.h>
 #include "selfwrite/go_do_search.h"
 
+#ifdef kernel518
+#define __NR_uintr_register_handler	471
+#define __NR_uintr_unregister_handler	472
+#define __NR_uintr_create_fd		473
+#define __NR_uintr_register_sender	474
+#define __NR_uintr_unregister_sender	475
+#else
 #define __NR_uintr_register_handler	449
 #define __NR_uintr_unregister_handler	450
 #define __NR_uintr_create_fd		451
 #define __NR_uintr_register_sender	452
 #define __NR_uintr_unregister_sender	453
+#endif
 
 /* For simiplicity, until glibc support is added */
 #define uintr_register_handler(handler, flags)	syscall(__NR_uintr_register_handler, handler, flags)
@@ -169,9 +177,17 @@ int main(int argc, char *argv[]) {
     /* Initialize io_uring */
     struct io_uring_params par;
     memset(&par, 0, sizeof(struct io_uring_params));
+    #ifndef kernel518 
     par.uintr_fd = uintr_fd;
+    #endif
+    
     par.flags |= IORING_SETUP_SQPOLL;
     io_uring_queue_init_params(QUEUE_DEPTH, &ring, &par);
+
+    #ifdef kernel518 
+    io_uring_register_uintr(&ring, &uintr_fd);
+    #endif
+
     int need = 0;
     for (int i = 1; i < argc; i++) {
         int ret = submit_read_request(argv[i], &ring);

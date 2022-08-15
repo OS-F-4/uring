@@ -12,11 +12,19 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <x86gprintrin.h>
+#ifdef kernel518
+#define __NR_uintr_register_handler	471
+#define __NR_uintr_unregister_handler	472
+#define __NR_uintr_create_fd		473
+#define __NR_uintr_register_sender	474
+#define __NR_uintr_unregister_sender	475
+#else
 #define __NR_uintr_register_handler	449
 #define __NR_uintr_unregister_handler	450
 #define __NR_uintr_create_fd		451
 #define __NR_uintr_register_sender	452
 #define __NR_uintr_unregister_sender	453
+#endif
 
 /* For simiplicity, until glibc support is added */
 #define uintr_register_handler(handler, flags)	syscall(__NR_uintr_register_handler, handler, flags)
